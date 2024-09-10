@@ -100,3 +100,4 @@ if __name__ == '__main__':
 
     # This will print the entire 6x2 array of assignments
     print(index_to_assignment([0, 1, 2, 3, 4, 5], card))
+    print(assignment_to_index([[0, 0], [1, 0], [0, 1], [0, 2], [1, 2]], card))

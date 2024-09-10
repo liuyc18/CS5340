@@ -1,9 +1,9 @@
 """ CS5340 Lab 1: Belief Propagation and Maximal Probability
 See accompanying PDF for instructions.
 
-Name: <Your Name here>
-Email: <username>@u.nus.edu
-Student ID: A0123456X
+Name: Liu Yichao
+Email: e1373474@u.nus.edu
+Student ID: A0304386A
 """
 
 import copy
@@ -14,6 +14,8 @@ import numpy as np
 from factor import Factor, index_to_assignment, assignment_to_index, generate_graph_from_factors, \
     visualize_graph
 
+A = Factor(var=[1, 2, 5], card=[2, 3, 5], val=np.arange(0, 3, 0.1))
+B = Factor(var=[2, 4], card=[3, 7], val=np.arange(0, 2.1, 0.1))
 
 """For sum product message passing"""
 def factor_product(A, B):
@@ -34,6 +36,7 @@ def factor_product(A, B):
 
     # Compute mapping between the variable ordering between the two factors
     # and the output to set the cardinality
+    # here the same common variable has the same cardinality
     out.card = np.zeros(len(out.var), np.int64)
     mapA = np.argmax(out.var[None, :] == A.var[:, None], axis=-1)
     mapB = np.argmax(out.var[None, :] == B.var[:, None], axis=-1)
@@ -53,8 +56,10 @@ def factor_product(A, B):
       understand what the above lines are doing, in order to implement
       subsequent parts.
     """
+    out.val = A.val[idxA] * B.val[idxB]
     return out
 
+# factor_product(A, B)
 
 def factor_marginalize(factor, var):
     """Sums over a list of variables.
@@ -71,9 +76,16 @@ def factor_marginalize(factor, var):
     """ YOUR CODE HERE
     Marginalize out the variables given in var
     """
-
+    # select the variables that are not in var
+    out.var = np.setdiff1d(factor.var, var)
+    # select the cardinality of these variables above
+    out.card = factor.card[np.isin(factor.var, out.var)]
+    # reshape and sum the factor values
+    margins = np.where(np.isin(factor.var, var))[0]
+    out.val = np.sum(factor.val.reshape(factor.card), axis=tuple(margins))
     return out
 
+# factor_marginalize(A, [2, 5])
 
 def observe_evidence(factors, evidence=None):
     """Modify a set of factors given some evidence
@@ -94,9 +106,18 @@ def observe_evidence(factors, evidence=None):
     Set the probabilities of assignments which are inconsistent with the 
     evidence to zero.
     """
-
+    for var, value in evidence.items():
+        for factor in out:
+            assignments = factor.get_all_assignments()
+            if var in factor.var:
+                var_idx = np.where(factor.var == var)[0][0]
+                # select rows that are inconsistent with the evidence
+                indices = np.where(assignments[:, var_idx] != value)[0]
+                # and set to 0
+                factor.val[indices] = 0
     return out
 
+observe_evidence([A, B], {1: 0, 4: 1})
 
 """For max sum meessage passing (for MAP)"""
 def factor_sum(A, B):
