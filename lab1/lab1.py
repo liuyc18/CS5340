@@ -11,11 +11,11 @@ from typing import List
 
 import numpy as np
 
-from factor import Factor, index_to_assignment, assignment_to_index, generate_graph_from_factors, \
-    visualize_graph
+from factor import Factor, index_to_assignment, assignment_to_index,\
+    generate_graph_from_factors, visualize_graph
 
 A = Factor(var=[1, 2, 5], card=[2, 3, 5], val=np.arange(0, 3, 0.1))
-# B = Factor(var=[2, 4], card=[3, 7], val=np.arange(0, 2.1, 0.1))
+B = Factor(var=[2, 4], card=[3, 7], val=np.arange(0, 2.1, 0.1))
 # C = Factor(var=[2, 3], card=[3, 1], val=np.arange(0, 0.3, 0.1))
 
 """For sum product message passing"""
@@ -117,8 +117,6 @@ def observe_evidence(factors, evidence=None):
                 factor.val[indices] = 0
     return out
 
-# observe_evidence([A, B], {1: 0, 4: 1})
-
 """For max sum meessage passing (for MAP)"""
 def factor_sum(A, B):
     """Same as factor_product, but sums instead of multiplies
@@ -152,6 +150,7 @@ def factor_sum(A, B):
     You should populate the .val field with the factor sum. The code for this
     should be very similar to the factor_product().
     """
+    out.val = A.val[idxA] + B.val[idxB]
 
     return out
 
@@ -203,9 +202,8 @@ def compute_joint_distribution(factors):
 
     return joint
 
-# joint = compute_joint_distribution([A, B, C])
 
-def compute_marginals_naive(V, factors, evidence):
+def compute_marginals_naive(V, factors, evidence=None):
     """Computes the marginal over a set of given variables
 
     Args:
@@ -268,6 +266,9 @@ def compute_marginals_bp(V, factors, evidence):
     root = 0
 
     # Create structure to hold messages
+    # A message is a list of factors.
+    # Well here in a tree-like structure and after marginalization,
+    # actually it's just one factor which only contains one var(receiver of the message).
     num_nodes = graph.number_of_nodes()
     messages = [[None] * num_nodes for _ in range(num_nodes)]
 
@@ -283,6 +284,79 @@ def compute_marginals_bp(V, factors, evidence):
     Hint: You might find it useful to add auxilliary functions. You may add 
       them as either inner (nested) or external functions.
     """
+
+    def collect(i, j):
+        """
+        `i`, `j` SHOULD BE NEIGHBORS in the graph, and i IS THE PARENT of j.
+        We collect messages from neighbors of j except i,
+        and send message from j to i.
+        This message is saved in messages[j][i].
+        """
+        # select unary factor of j and pairwise factor between i and j
+        unary_factor = graph.nodes[j]['factor'] \
+            if 'factor' in graph.nodes[j] else Factor()
+        pairwise_factor = graph.edges[i, j]['factor']
+        # leaf node except root
+        if(graph.degree(j) == 1): 
+            messages[j][i] = factor_product(unary_factor, pairwise_factor)
+            # sum over x_j
+            messages[j][i] = factor_marginalize(messages[j][i], [j])
+        # internal node
+        else:
+            # collect messages from neighbors of j except i
+            for neighbor in list(graph.neighbors(j)):
+                if neighbor != i:
+                    collect(j, neighbor)
+            # calculate the message from j to i
+            messages[j][i] = factor_product(unary_factor, pairwise_factor)
+            for neighbor in list(graph.neighbors(j)):
+                if neighbor != i:
+                    messages[j][i] = factor_product(messages[j][i], messages[neighbor][j])
+            # sum over x_j
+            messages[j][i] = factor_marginalize(messages[j][i], [j])
+        return
+
+    def distribute(i, j):
+        """
+        `i`, `j` SHOULD BE NEIGHBORS in the graph, and i IS THE PARENT of j.
+        Distribute messages to neighbors of j except i,
+        and send message from i to j.
+        This message is saved in messages[i][j].
+        """
+        unary_factor = graph.nodes[i]['factor'] \
+            if 'factor' in graph.nodes[i] else Factor()
+        pairwise_factor = graph.edges[i, j]['factor']
+        # calculate the message from i to j
+        messages[i][j] = factor_product(unary_factor, pairwise_factor)
+        for neighbor in list(graph.neighbors(i)):
+            if neighbor != j:
+                messages[i][j] = factor_product(messages[i][j], messages[neighbor][i])
+        # sum over x_i
+        messages[i][j] = factor_marginalize(messages[i][j], [i])
+        # distribute messages to neighbors of j except i
+        for neighbor in list(graph.neighbors(j)):
+            if neighbor != i:
+                distribute(j, neighbor)
+
+    # collect the messages from leaves to root
+    for neighbor in list(graph.neighbors(root)):
+        collect(root, neighbor)
+
+    # distribute the messages from root to leaves
+    for neighbor in list(graph.neighbors(root)):
+        distribute(root, neighbor)
+    
+    # print(messages)
+    # compute the marginals
+    for v in V:
+        unary_factor = graph.nodes[v]['factor'] \
+            if 'factor' in graph.nodes[v] else Factor()
+        marginal = unary_factor
+        for neighbor in list(graph.neighbors(v)):
+            marginal = factor_product(marginal, messages[neighbor][v])
+        # normalize the probabilities
+        marginal.val /= np.sum(marginal.val)
+        marginals.append(marginal)
 
     return marginals
 
