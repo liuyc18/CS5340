@@ -15,7 +15,8 @@ from factor import Factor, index_to_assignment, assignment_to_index, generate_gr
     visualize_graph
 
 A = Factor(var=[1, 2, 5], card=[2, 3, 5], val=np.arange(0, 3, 0.1))
-B = Factor(var=[2, 4], card=[3, 7], val=np.arange(0, 2.1, 0.1))
+# B = Factor(var=[2, 4], card=[3, 7], val=np.arange(0, 2.1, 0.1))
+# C = Factor(var=[2, 3], card=[3, 1], val=np.arange(0, 0.3, 0.1))
 
 """For sum product message passing"""
 def factor_product(A, B):
@@ -59,8 +60,6 @@ def factor_product(A, B):
     out.val = A.val[idxA] * B.val[idxB]
     return out
 
-# factor_product(A, B)
-
 def factor_marginalize(factor, var):
     """Sums over a list of variables.
 
@@ -82,10 +81,11 @@ def factor_marginalize(factor, var):
     out.card = factor.card[np.isin(factor.var, out.var)]
     # reshape and sum the factor values
     margins = np.where(np.isin(factor.var, var))[0]
-    out.val = np.sum(factor.val.reshape(factor.card), axis=tuple(margins))
-    return out
+    margins = factor.var.size - 1 - margins
+    reshape_val = factor.val.reshape(factor.card[::-1])
+    out.val = np.sum(reshape_val, axis=tuple(margins)).flatten()
 
-# factor_marginalize(A, [2, 5])
+    return out
 
 def observe_evidence(factors, evidence=None):
     """Modify a set of factors given some evidence
@@ -117,7 +117,7 @@ def observe_evidence(factors, evidence=None):
                 factor.val[indices] = 0
     return out
 
-observe_evidence([A, B], {1: 0, 4: 1})
+# observe_evidence([A, B], {1: 0, 4: 1})
 
 """For max sum meessage passing (for MAP)"""
 def factor_sum(A, B):
@@ -198,9 +198,12 @@ def compute_joint_distribution(factors):
     Compute the joint distribution from the list of factors. You may assume
     that the input factors are valid so no input checking is required.
     """
+    for factor in factors:
+        joint = factor_product(factor, joint)
 
     return joint
 
+# joint = compute_joint_distribution([A, B, C])
 
 def compute_marginals_naive(V, factors, evidence):
     """Computes the marginal over a set of given variables
@@ -221,7 +224,15 @@ def compute_marginals_naive(V, factors, evidence):
     Compute the marginal. Output should be a factor.
     Remember to normalize the probabilities!
     """
-
+    # compute the joint distribution
+    joint = compute_joint_distribution(factors)
+    # observe the evidence, reduce the joint distribution
+    if evidence is not None:
+        joint = observe_evidence([joint], evidence)[0]
+    # marginalize out irrelevant variables
+    output = factor_marginalize(joint, np.setdiff1d(joint.var, V))
+    # normalize the probabilities
+    output.val /= np.sum(output.val)
     return output
 
 

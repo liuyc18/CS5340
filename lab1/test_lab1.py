@@ -10,6 +10,8 @@ from lab1 import *
 
 STR_OUTPUT_MISMATCH = 'Output does not match.'
 GRAPH_DATA = ['graph_small', 'graph_large']  # List of test graphs
+# GRAPH_DATA = ['graph_small']  # List of test graphs
+# GRAPH_DATA = ['graph_large']  # List of test graphs
 
 
 def wrap_test(func):
