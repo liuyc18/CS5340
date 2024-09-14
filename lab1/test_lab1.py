@@ -179,7 +179,7 @@ def test_factor_max_marginalize():
                      card=[2],
                      val=[0.9, 0.7],
                      val_argmax=[
-                         {3: 1, 5: 0},  # When X4==0, the maximizing assignment is X_3=1, X_5=0
+                         {3: 1, 5: 0},  # When  X4==0, the maximizing assignment is X_3=1, X_5=0
                          {3: 0, 5: 2},  # When X4==1, the maximizing assignment is X_3=0, X_5=2
                      ])
 

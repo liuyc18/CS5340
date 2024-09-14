@@ -178,7 +178,32 @@ def factor_max_marginalize(factor, var):
     You should make use of val_argmax to keep track of the location with the
     maximum probability.
     """
-
+    # select the variable that are not in var
+    # here only one variable is NOT marginalized out
+    out.var = np.setdiff1d(factor.var, var)
+    idx_var = np.where(np.isin(factor.var, out.var))[0]
+    # select the cardinality of these variables above
+    # actually only one remains.
+    out.card = factor.card[np.isin(factor.var, out.var)]
+    # reshape and find the maximum value
+    margins = factor.var.size - 1 - np.where(np.isin(factor.var, var))[0]
+    reshape_val = factor.val.reshape(factor.card[::-1])
+    out.val = np.max(reshape_val, axis=tuple(margins)).flatten()
+    # find the argmax of the marginalized variables
+    out.val_argmax = []
+    assignments = factor.get_all_assignments()
+    for i in range(out.card[0]):
+        max_indices = np.where(assignments[:, idx_var] == i)[0]
+        # max_val = np.max(factor.val[max_indices])
+        argmax_val = max_indices[np.argmax(factor.val[max_indices])]
+        # argmax_val is the index of the maximum value in the original factor
+        # when the 'un-marginalized' variable is fixed to the value `i` 
+        assignment = index_to_assignment(np.array([argmax_val]), factor.card)
+        this_val_argmax = {}
+        for j in var:
+            this_val_argmax[j] = assignment[0][np.where(factor.var == j)[0][0]]
+        out.val_argmax.append(this_val_argmax)
+    
     return out
 
 
@@ -266,9 +291,9 @@ def compute_marginals_bp(V, factors, evidence):
     root = 0
 
     # Create structure to hold messages
-    # A message is a list of factors.
+    # A message is the product of a list of factors.
     # Well here in a tree-like structure and after marginalization,
-    # actually it's just one factor which only contains one var(receiver of the message).
+    # it's just one factor which only contains one var(receiver of the message).
     num_nodes = graph.number_of_nodes()
     messages = [[None] * num_nodes for _ in range(num_nodes)]
 
@@ -289,7 +314,7 @@ def compute_marginals_bp(V, factors, evidence):
         """
         `i`, `j` SHOULD BE NEIGHBORS in the graph, and i IS THE PARENT of j.
         We collect messages from neighbors of j except i,
-        and send message from j to i.
+        and send message from j to i. (after j is marginalized out)
         This message is saved in messages[j][i].
         """
         # select unary factor of j and pairwise factor between i and j
@@ -311,16 +336,16 @@ def compute_marginals_bp(V, factors, evidence):
             messages[j][i] = factor_product(unary_factor, pairwise_factor)
             for neighbor in list(graph.neighbors(j)):
                 if neighbor != i:
-                    messages[j][i] = factor_product(messages[j][i], messages[neighbor][j])
+                    messages[j][i] = factor_product( \
+                        messages[j][i], messages[neighbor][j])
             # sum over x_j
             messages[j][i] = factor_marginalize(messages[j][i], [j])
-        return
 
     def distribute(i, j):
         """
         `i`, `j` SHOULD BE NEIGHBORS in the graph, and i IS THE PARENT of j.
-        Distribute messages to neighbors of j except i,
-        and send message from i to j.
+        collect messages from neighbors of i except j,
+        and send message from i to j. (after i is marginalized out)
         This message is saved in messages[i][j].
         """
         unary_factor = graph.nodes[i]['factor'] \
@@ -330,7 +355,8 @@ def compute_marginals_bp(V, factors, evidence):
         messages[i][j] = factor_product(unary_factor, pairwise_factor)
         for neighbor in list(graph.neighbors(i)):
             if neighbor != j:
-                messages[i][j] = factor_product(messages[i][j], messages[neighbor][i])
+                messages[i][j] = factor_product( \
+                    messages[i][j], messages[neighbor][i])
         # sum over x_i
         messages[i][j] = factor_marginalize(messages[i][j], [i])
         # distribute messages to neighbors of j except i
@@ -341,13 +367,10 @@ def compute_marginals_bp(V, factors, evidence):
     # collect the messages from leaves to root
     for neighbor in list(graph.neighbors(root)):
         collect(root, neighbor)
-
     # distribute the messages from root to leaves
     for neighbor in list(graph.neighbors(root)):
         distribute(root, neighbor)
-    
-    # print(messages)
-    # compute the marginals
+    # compute the marginals use the messages
     for v in V:
         unary_factor = graph.nodes[v]['factor'] \
             if 'factor' in graph.nodes[v] else Factor()
@@ -357,7 +380,7 @@ def compute_marginals_bp(V, factors, evidence):
         # normalize the probabilities
         marginal.val /= np.sum(marginal.val)
         marginals.append(marginal)
-
+    # print(marginals)
     return marginals
 
 
@@ -391,4 +414,71 @@ def map_eliminate(factors, evidence):
     behavior.
     """
 
+    # Evidence and calculate the log probability of factors
+    factors = observe_evidence(factors, evidence)
+    for factor in factors:
+        factor.val = np.log(factor.val)
+    graph = generate_graph_from_factors(factors)
+    root = 0
+    num_nodes = graph.number_of_nodes()
+    messages = [[None] * num_nodes for _ in range(num_nodes)]
+
+    # collect messages from leaves to root
+    def collect(i, j):
+        """
+        i is the parent of j
+        collect messages from neighbors of j except i,
+        and send message from j to i. (after j is marginalized out)
+        """
+        unary_factor = graph.nodes[j]['factor'] \
+            if 'factor' in graph.nodes[j] else Factor()
+        pairwise_factor = graph.edges[i, j]['factor']
+        if(graph.degree(j) == 1): 
+            messages[j][i] = factor_sum(unary_factor, pairwise_factor)
+            messages[j][i] = factor_max_marginalize(messages[j][i], [j])
+        else:
+            for neighbor in list(graph.neighbors(j)):
+                if neighbor != i:
+                    collect(j, neighbor)
+            messages[j][i] = factor_sum(unary_factor, pairwise_factor)
+            for neighbor in list(graph.neighbors(j)):
+                if neighbor != i:
+                    messages[j][i] = factor_sum( \
+                        messages[j][i], messages[neighbor][j])
+            messages[j][i] = factor_max_marginalize(messages[j][i], [j])
+
+    def distribute(i, j):
+        '''
+        i is the parent of j
+        distribute from i to j to get the max decoding 
+        '''
+        x_i_star = max_decoding[i] # the max decoding of i
+        max_decoding[j] = messages[j][i].val_argmax[x_i_star][j]
+        for neighbor in list(graph.neighbors(j)):
+            if neighbor != i:
+                distribute(j, neighbor)
+
+
+    # collect messages from leaves to root
+    for neighbor in list(graph.neighbors(root)):
+        collect(root, neighbor)
+
+    # compute MAP log prob at root, and get max decoding for root
+    joint = Factor()
+    unary_factor = graph.nodes[root]['factor'] \
+        if 'factor' in graph.nodes[root] else Factor()
+    joint = factor_sum(joint, unary_factor)
+    for neighbor in list(graph.neighbors(root)):
+        joint = factor_sum(joint, messages[neighbor][root])
+    log_prob_max = np.max(joint.val)
+    max_decoding[root] = np.argmax(joint.val)
+
+    # distribute messages from root to leaves to get max decoding for other nodes
+    for neighbor in list(graph.neighbors(root)):
+        distribute(root, neighbor)
+    
+    # remove observed variables in max_decoding
+    for var in evidence:
+        del max_decoding[var]
+    
     return max_decoding, log_prob_max
