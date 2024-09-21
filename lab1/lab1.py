@@ -2,7 +2,7 @@
 See accompanying PDF for instructions.
 
 Name: Liu Yichao
-Email: e1373474@u.nus.edu
+Email: yichao.liu@u.nus.edu
 Student ID: A0304386A
 """
 
@@ -14,9 +14,6 @@ import numpy as np
 from factor import Factor, index_to_assignment, assignment_to_index,\
     generate_graph_from_factors, visualize_graph
 
-A = Factor(var=[1, 2, 5], card=[2, 3, 5], val=np.arange(0, 3, 0.1))
-B = Factor(var=[2, 4], card=[3, 7], val=np.arange(0, 2.1, 0.1))
-# C = Factor(var=[2, 3], card=[3, 1], val=np.arange(0, 0.3, 0.1))
 
 """For sum product message passing"""
 def factor_product(A, B):

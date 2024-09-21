@@ -74,6 +74,10 @@ def index_to_assignment(index: Union[int, np.ndarray], card: np.ndarray):
     else:
         is_scalar = False
 
+    # Handle case where a list is passed in instead of numpy array
+    index = np.array(index)
+    card = np.array(card)
+
     divisor = np.cumprod(np.concatenate([[1.], card[:-1]]))
     assignment = np.mod(
         np.floor(index[:, None] / divisor[None, :]),

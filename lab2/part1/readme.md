@@ -48,7 +48,7 @@ The input `.json` files are encoded in the following format:
     }
 
     "evidence": {
-        "2": 0  # implies that 2 is observed to be 1.    
+        "2": 0  # implies that 2 is observed to be 0.    
     }
 }
 ```
@@ -76,7 +76,7 @@ answer files that we have provided (results might differ based on the operators 
 We will evaluate your score for this task based on code and results (small numerical differences will not be much of an 
 issue as long as your code is corect).
 
-Alternatively, to run for all test cases, you can run `predict_all_cases.sh`.
+Alternatively, to run for all test cases, you can run `run_main.sh`.
 
 ### Questions:
 
