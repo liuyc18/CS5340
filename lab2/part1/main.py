@@ -53,7 +53,7 @@ def _update_mrf_w_evidence(all_nodes, evidence, edges, factors):
     # remove evidence nodes from all nodes to get query nodes
     query_nodes = np.array([node for node in all_nodes if node not in evidence.keys()])
     
-    # add edges between the neighbors of evidence nodes to update the MRF graph
+    # add edges between the neighbors of evidence node to update the MRF graph
     for eliminated_node in evidence.keys():
         neighbors0 = np.array(
             [edge[1] for edge in updated_edges if edge[0] == eliminated_node]
@@ -112,7 +112,7 @@ def _get_clique_potentials(jt_cliques, jt_edges, jt_clique_factors):
 
     def collect(i, j):
         '''
-        i is the parenyt of j, collect messages from j to i and stored in messages[j][i]
+        i is the parent of j, collect messages from j to i and stored in messages[j][i]
         '''
         if(clique_graph.degree(j) == 1):
             messages[j][i] = factor_marginalize( 

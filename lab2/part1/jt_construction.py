@@ -22,6 +22,7 @@ def construct_graph(nodes, edges):
         graph[edge[1]].add(edge[0])
     return graph
 
+
 def triangulate_graph(graph):
     '''
     Args:
@@ -48,6 +49,7 @@ def triangulate_graph(graph):
 
     return cliques
 
+
 def get_all_intersections_between_cliques(cliques):
     '''
     Get all edges between cliques with weights of the number of common vars
@@ -67,6 +69,7 @@ def get_all_intersections_between_cliques(cliques):
                 edges[i][j] = len(common_vars)
                 edges[j][i] = len(common_vars)
     return np.array(edges)
+
 
 # prim algorithm to find the maximal spanning tree of a graph
 def prim(edges):
@@ -166,8 +169,7 @@ def _get_jt_clique_and_edges(nodes, edges):
 def construct_junction_tree(nodes, edges, factors):
     """
     Constructs the junction tree and returns its the cliques, edges and clique factors 
-    in the junction tree.
-    DO NOT EDIT THIS FUNCTION.
+    in the junction tree. DO NOT EDIT THIS FUNCTION.
 
     Args:
         nodes: numpy array of random variables e.g. [X1, X2, ..., Xv]
