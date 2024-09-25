@@ -71,7 +71,7 @@ def _learn_node_parameter_w(outputs, inputs=None):
     A[:, 1:] = inputs
 
     # X = A^TA
-    X = np.dot(A.T, A) # here A.shape = 
+    X = np.dot(A.T, A) # here A.shape = (N, C + 1)
 
     # W = (w_{\mu 0}, w_{\mu 1}, ..., w_{\mu C})^T = X^{-1}Y
     weights = np.linalg.solve(X, Y)
