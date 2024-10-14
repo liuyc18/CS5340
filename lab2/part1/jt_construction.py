@@ -35,17 +35,17 @@ def triangulate_graph(graph):
     nodes = set(graph.keys())
 
     # aribitrarily choose an elimination order, here we just follow the order of nodes
-    for node in list(nodes):
+    while nodes:
+        node = nodes.pop()
         neighbors = graph[node] & nodes
         # record the new maximal clique
         cliques.append(neighbors | {node})
         # connect all neighbors of the eliminated node 
-        for i in neighbors & nodes:
-            for j in neighbors & nodes:
+        for i in neighbors:
+            for j in neighbors:
                 if i != j and j not in graph[i]:
                     graph[i].add(j)   
                     graph[j].add(i)
-        nodes.remove(node)  
 
     return cliques
 

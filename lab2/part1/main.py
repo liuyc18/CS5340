@@ -71,13 +71,13 @@ def _update_mrf_w_evidence(all_nodes, evidence, edges, factors):
     updated_edges = [edge for edge in updated_edges \
         if edge[0] not in evidence.keys() and edge[1] not in evidence.keys()]
     updated_edges = np.array(updated_edges)
+    updated_edges = np.unique(updated_edges, axis=0)
 
     # update factors with evidence
     for i in range(len(updated_factors)):
         updated_factors[i] = factor_evidence(updated_factors[i], evidence)
     # remove empty factors after observing evidence, this step is not necessary
     updated_factors = [factor for factor in updated_factors if factor.var.size > 0]
-
     """ END YOUR CODE HERE """
 
     return query_nodes, updated_edges, updated_factors

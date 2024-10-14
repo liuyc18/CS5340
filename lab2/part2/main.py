@@ -143,7 +143,6 @@ def _get_learned_parameters(nodes, edges, observations):
     parameters = {}
 
     """ YOUR CODE HERE """
-    # !!! nodes MUST be 0-indexed !!! e.g. [0, 1, 2, ..., V-1]
     # Convert observations dictionary to a 2D numpy array
     observations = {node: np.array(observations[node]) for node in nodes}
 
