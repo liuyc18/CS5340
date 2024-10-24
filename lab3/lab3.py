@@ -1,9 +1,9 @@
 """ CS5340 Lab 3: Hidden Markov Models
 See accompanying PDF for instructions.
 
-Name: <Your Name here>
-Email: <username>@u.nus.edu
-Student ID: A0123456X
+Name: Liu Yichao
+Email: yichao.liu@u.nus.edu
+Student ID: A0304386A
 """
 
 import numpy as np
@@ -34,7 +34,7 @@ def initialize(n_states, x):
     # Gaussian Observation model parameters
     # We use k-means clustering to initalize the parameters.
     x_cat = np.concatenate(x, axis=0)
-    kmeans = KMeans(n_clusters=n_states, random_state=seed).fit(x_cat[:, None])
+    kmeans = KMeans(n_clusters=int(n_states), random_state=seed).fit(x_cat[:, None])
     mu = kmeans.cluster_centers_[:, 0]
     std = np.array([np.std(x_cat[kmeans.labels_ == l]) for l in range(n_states)])
     phi = {'mu': mu, 'sigma': std}
@@ -68,6 +68,97 @@ def e_step(x_list, pi, A, phi):
     "gamma_list" and "xi_list" with the correct values.
     Be sure to use the scaling factor for numerical stability.
     """
+    N = len(x_list[0]) # seq length
+    obs_times = len(x_list) # number of sequences
+    # ########################## old parameters ###################################
+    # p(x_n|z_nk = 1) ~ N(mu[k], sigma[k])
+    mu, sigma = phi['mu'], phi['sigma'] 
+
+    # #################### normalized alpha and beta ##############################
+    # for a single sequence, we have:
+    # alpha(n) = p(x_1, ..., x_n, z_n) \in R^{n_states}
+    # beta(n) = p(x_{n+1}, ..., x_N | z_n) \in R^{n_states}
+    # alpha_hat(n) = alpha(n) / p(x_1, ..., x_n) = p(z_n | x_1, ..., x_n) 
+    # beta_hat(n) = beta(n) / p(x_{n+1}, ..., x_N | x_1, ..., x_n)
+    alpha_hat = np.zeros((obs_times, N, n_states))
+    beta_hat = np.zeros((obs_times, N, n_states))
+
+    # ######################## scaling factors c ##################################
+    # c_n = p(x_n | x_1, ..., x_{n-1}) = (p(x_1, ..., x_n) / (p(x_1, ..., x_{n-1}))
+    # c_n \in R, is a scalar
+    c = np.zeros((obs_times, N))
+
+    # ##################### calculate emission probability ########################
+    # emission[i, n, k] = p(x_n^(i) | z_nk = 1) = N(x_n^(i) | mu[k], sigma[k])
+    # precompute emission probability for each sequence to save computation
+    emission = np.zeros((obs_times, N, n_states))
+    for i in range(obs_times):
+        for n in range(N):
+            for k in range(n_states):
+                emission[i, n, k] = scipy.stats.norm.pdf(x_list[i][n], mu[k], sigma[k])
+
+    # ################ initialize alpha_hat(1), c(1) ##############################
+    for i in range(obs_times):
+        # alpha(1) = p(x_1, z_1) = p(x_1 | z_1) p(z_1)
+        # c(1) = \sum_{z_1} alpha(1)
+        # alpha_hat(1) = alpha(1) / c(1)
+        for k in range(n_states):
+            alpha_hat[i, 0, k] = pi[k] * emission[i, 0, k]
+        c[i, 0] = np.sum(alpha_hat[i, 0])
+        alpha_hat[i, 0] /= c[i, 0]
+
+    # #################### initialize beta_hat(N) #################################
+    for i in range(obs_times):
+        # beta(N) = beta_hat(N) = \mathbf{1}
+        for k in range(n_states):
+            beta_hat[i, N-1, k] = 1
+
+    # ################### forward pass to compute alpha_hat, c ####################
+    for i in range(obs_times):
+        # rewrite the recursion: 
+        #   c_n * alpha_hat(n) 
+        # = p(x_n | z_n) \sum_{z_{n-1}} alpha_hat(n-1) p(z_n | z_{n-1})
+        # := alpha_tilde(n)
+        # we use: c_n = \sum_{z_n} alpha_tilde(n) 
+        for n in range(1, N):
+            # for memory efficiency we use alpha_tilde_n to store the intermediate result
+            alpha_tilde_n = np.zeros((n_states)) 
+            for k in range(n_states): # z_{nk}^(i) = 1
+                for j in range(n_states): # z_{(n-1)j}^(i) = 1
+                    alpha_tilde_n[k] += alpha_hat[i, n-1, j] * A[j, k]
+            for k in range(n_states): # z_nk^(i) = 1
+                # multiply by p(x_n^(i) | z_nk^(i) = 1)
+                alpha_tilde_n[k] *= emission[i, n, k]
+            c[i, n] = np.sum(alpha_tilde_n)
+            alpha_hat[i, n] = alpha_tilde_n / c[i, n]
+    
+    # ###################### backward pass to compute beta_hat ####################
+    for i in range(obs_times):
+        # rewrite the recursion:
+        #   c_{n+1} beta_hat(n) 
+        # = \sum_{z_{n+1}} beta_hat(n+1) p(x_{n+1} | z_{n+1}) p(z_{n+1} | z_n)
+        # := beta_tilde(n)
+        for n in range(N-2, -1, -1):
+            beta_tilda_n = np.zeros(n_states) # similar to alpha_tilde_n
+            for j in range(n_states): # z_nj = 1
+                for k in range(n_states): # z_(n+1)k = 1
+                    # emission = p(x_{n+1}^(i) | z_{n+1}k^(i) = 1)
+                    beta_tilda_n[j] += beta_hat[i, n+1, k] * emission[i, n+1, k] * A[j, k]
+            beta_hat[i, n] = beta_tilda_n / c[i, n+1]
+
+    # ###################### compute gamma and xi ###############################
+    for i in range(obs_times):
+        # gamma(n) = alpha_hat(n) * beta_hat(n)
+        for n in range(N):
+            gamma_list[i][n] = alpha_hat[i, n] * beta_hat[i, n]
+        # xi(z_{n-1}, z_n) = 
+        #   1/c_n * alpha_hat(n-1) * p(x_n | z_n) * p(z_n | z_{n-1}) * beta_hat(n)
+        for n in range(1, N):
+            for j in range(n_states): # z_{n-1}j^(i) = 1
+                for k in range(n_states): # z_nk^(i) = 1
+                    # emission = p(x_n^(i) | z_nk^(i) = 1)
+                    xi_list[i][n-1, j, k] = \
+                        alpha_hat[i, n-1, j] * beta_hat[i, n, k] * emission[i, n, k] * A[j, k] / c[i, n]
 
     return gamma_list, xi_list
 
