@@ -10,7 +10,7 @@ import numpy as np
 import scipy.stats
 from scipy.special import softmax
 from sklearn.cluster import KMeans
-
+# import time
 
 def initialize(n_states, x):
     """Initializes starting value for initial state distribution pi
@@ -69,7 +69,8 @@ def e_step(x_list, pi, A, phi):
     Be sure to use the scaling factor for numerical stability.
     """
     N = len(x_list[0]) # seq length
-    obs_times = len(x_list) # number of sequences
+    T = len(x_list) # number of sequences
+
     # ########################## old parameters ###################################
     # p(x_n|z_nk = 1) ~ N(mu[k], sigma[k])
     mu, sigma = phi['mu'], phi['sigma'] 
@@ -80,85 +81,111 @@ def e_step(x_list, pi, A, phi):
     # beta(n) = p(x_{n+1}, ..., x_N | z_n) \in R^{n_states}
     # alpha_hat(n) = alpha(n) / p(x_1, ..., x_n) = p(z_n | x_1, ..., x_n) 
     # beta_hat(n) = beta(n) / p(x_{n+1}, ..., x_N | x_1, ..., x_n)
-    alpha_hat = np.zeros((obs_times, N, n_states))
-    beta_hat = np.zeros((obs_times, N, n_states))
+    alpha_hat = np.zeros((T, N, n_states))
+    beta_hat = np.zeros((T, N, n_states))
 
     # ######################## scaling factors c ##################################
     # c_n = p(x_n | x_1, ..., x_{n-1}) = (p(x_1, ..., x_n) / (p(x_1, ..., x_{n-1}))
     # c_n \in R, is a scalar
-    c = np.zeros((obs_times, N))
+    c = np.zeros((T, N))
 
     # ##################### calculate emission probability ########################
     # emission[i, n, k] = p(x_n^(i) | z_nk = 1) = N(x_n^(i) | mu[k], sigma[k])
     # precompute emission probability for each sequence to save computation
-    emission = np.zeros((obs_times, N, n_states))
-    for i in range(obs_times):
-        for n in range(N):
-            for k in range(n_states):
-                emission[i, n, k] = scipy.stats.norm.pdf(x_list[i][n], mu[k], sigma[k])
+    emission = np.zeros((T, N, n_states))
+    for i in range(T):
+        for k in range(n_states):
+            emission[i, :, k] = scipy.stats.norm.pdf(x_list[i], mu[k], sigma[k])
 
     # ################ initialize alpha_hat(1), c(1) ##############################
-    for i in range(obs_times):
+    for i in range(T):
         # alpha(1) = p(x_1, z_1) = p(x_1 | z_1) p(z_1)
         # c(1) = \sum_{z_1} alpha(1)
         # alpha_hat(1) = alpha(1) / c(1)
-        for k in range(n_states):
-            alpha_hat[i, 0, k] = pi[k] * emission[i, 0, k]
+        # for k in range(n_states):
+        #     alpha_hat[i, 0, k] = pi[k] * emission[i, 0, k]
+        alpha_hat[i, 0, :] = pi * emission[i, 0, :]
         c[i, 0] = np.sum(alpha_hat[i, 0])
         alpha_hat[i, 0] /= c[i, 0]
 
     # #################### initialize beta_hat(N) #################################
-    for i in range(obs_times):
+    for i in range(T):
         # beta(N) = beta_hat(N) = \mathbf{1}
-        for k in range(n_states):
-            beta_hat[i, N-1, k] = 1
+        # for k in range(n_states):
+        #     beta_hat[i, N-1, k] = 1
+        beta_hat[i, N-1, :] = 1
 
     # ################### forward pass to compute alpha_hat, c ####################
-    for i in range(obs_times):
+    # forward_time = time.time()
+    for i in range(T):
         # rewrite the recursion: 
         #   c_n * alpha_hat(n) 
         # = p(x_n | z_n) \sum_{z_{n-1}} alpha_hat(n-1) p(z_n | z_{n-1})
         # := alpha_tilde(n)
         # we use: c_n = \sum_{z_n} alpha_tilde(n) 
+
         for n in range(1, N):
-            # for memory efficiency we use alpha_tilde_n to store the intermediate result
-            alpha_tilde_n = np.zeros((n_states)) 
-            for k in range(n_states): # z_{nk}^(i) = 1
-                for j in range(n_states): # z_{(n-1)j}^(i) = 1
-                    alpha_tilde_n[k] += alpha_hat[i, n-1, j] * A[j, k]
-            for k in range(n_states): # z_nk^(i) = 1
-                # multiply by p(x_n^(i) | z_nk^(i) = 1)
-                alpha_tilde_n[k] *= emission[i, n, k]
-            c[i, n] = np.sum(alpha_tilde_n)
-            alpha_hat[i, n] = alpha_tilde_n / c[i, n]
+            # alpha_tilde_n = np.zeros((n_states)) 
+            # for k in range(n_states): # z_{nk}^(i) = 1
+            #     for j in range(n_states): # z_{(n-1)j}^(i) = 1
+            #         alpha_tilde_n[k] += alpha_hat[i, n-1, j] * A[j, k]
+            # for k in range(n_states): # z_nk^(i) = 1
+            #     # multiply by p(x_n^(i) | z_nk^(i) = 1)
+            #     alpha_tilde_n[k] *= emission[i, n, k]
+            # c[i, n] = np.sum(alpha_tilde_n)
+            # alpha_hat[i, n] = alpha_tilde_n / c[i, n]
+
+            # we use vectorization below to speed up (substitute the above loop)
+            # calculate alpha_hat(n-1) * p(z_n | z_{n-1}) 
+            alpha_tilde_n = np.dot(alpha_hat[i, n-1, :], A)  # Shape: (n_states,)
+            # alpha_tilde_n *= p(x_n | z_n)
+            alpha_tilde_n *= emission[i, n, :]  # Shape: (n_states,)
+            c[i, n] = np.sum(alpha_tilde_n) # Normalization factor
+            # Update alpha_hat with normalized alpha_tilde_n
+            alpha_hat[i, n, :] = alpha_tilde_n / c[i, n]
+    # print('Forward time: {:.2f}s'.format(time.time() - forward_time))
     
     # ###################### backward pass to compute beta_hat ####################
-    for i in range(obs_times):
+    # backward_time = time.time() 
+    for i in range(T):
         # rewrite the recursion:
         #   c_{n+1} beta_hat(n) 
         # = \sum_{z_{n+1}} beta_hat(n+1) p(x_{n+1} | z_{n+1}) p(z_{n+1} | z_n)
         # := beta_tilde(n)
         for n in range(N-2, -1, -1):
-            beta_tilda_n = np.zeros(n_states) # similar to alpha_tilde_n
-            for j in range(n_states): # z_nj = 1
-                for k in range(n_states): # z_(n+1)k = 1
-                    # emission = p(x_{n+1}^(i) | z_{n+1}k^(i) = 1)
-                    beta_tilda_n[j] += beta_hat[i, n+1, k] * emission[i, n+1, k] * A[j, k]
-            beta_hat[i, n] = beta_tilda_n / c[i, n+1]
+            # beta_tilda_n = np.zeros(n_states) # similar to alpha_tilde_n
+            # for j in range(n_states): # z_nj = 1
+            #     for k in range(n_states): # z_(n+1)k = 1
+            #         # emission = p(x_{n+1}^(i) | z_{n+1}k^(i) = 1)
+            #         beta_tilda_n[j] += beta_hat[i, n+1, k] * emission[i, n+1, k] * A[j, k]
+            # beta_hat[i, n] = beta_tilda_n / c[i, n+1]
 
+            # we use vectorization below to speed up (substitute the above loop)
+            beta_tilda_n = np.dot(A, beta_hat[i, n+1, :] * emission[i, n+1, :])  # Shape: (n_states,)
+            # Normalize and update beta_hat
+            beta_hat[i, n, :] = beta_tilda_n / c[i, n+1]
+    # print('Backward time: {:.2f}s'.format(time.time() - backward_time))
+          
     # ###################### compute gamma and xi ###############################
-    for i in range(obs_times):
+    # gamma_xi_time = time.time()
+    for i in range(T):
         # gamma(n) = alpha_hat(n) * beta_hat(n)
-        for n in range(N):
-            gamma_list[i][n] = alpha_hat[i, n] * beta_hat[i, n]
+        gamma_list[i] = alpha_hat[i] * beta_hat[i]
         # xi(z_{n-1}, z_n) = 
         #   1/c_n * alpha_hat(n-1) * p(x_n | z_n) * p(z_n | z_{n-1}) * beta_hat(n)
         for n in range(1, N):
-            for j in range(n_states): # z_{n-1}j^(i) = 1
-                for k in range(n_states): # z_nk^(i) = 1
-                    # emission = p(x_n^(i) | z_nk^(i) = 1)
-                    xi_list[i][n-1, j, k] = \
-                        alpha_hat[i, n-1, j] * beta_hat[i, n, k] * emission[i, n, k] * A[j, k] / c[i, n]
+            # for j in range(n_states): # z_{n-1}j^(i) = 1
+            #     for k in range(n_states): # z_nk^(i) = 1
+            #         # emission = p(x_n^(i) | z_nk^(i) = 1)
+            #         xi_list[i][n-1, j, k] = \
+            #             alpha_hat[i, n-1, j] * beta_hat[i, n, k] * emission[i, n, k] * A[j, k] / c[i, n]
+            # use vectorization below to speed up (substitute the above loop)
+            xi_list[i][n-1, :, :] = (
+                np.multiply(alpha_hat[i, n-1, :, np.newaxis], beta_hat[i, n, np.newaxis, :]) 
+                * emission[i, n, np.newaxis, :]
+                * A[:, :]
+            ) / c[i, n]
+    # print('Gamma and xi time: {:.2f}s'.format(time.time() - gamma_xi_time))
 
     return gamma_list, xi_list
 
@@ -191,6 +218,33 @@ def m_step(x_list, gamma_list, xi_list):
     """ YOUR CODE HERE
     Compute the complete-data maximum likelihood estimates for pi, A, phi.
     """
+    T = len(x_list) # number of sequences
+    N = len(x_list[0]) # length of each sequence
+
+    gamma = np.array(gamma_list)    # shape: (T, N, n_states)
+    xi = np.array(xi_list)          # shape: (T, N-1, n_states, n_states)
+    x = np.array(x_list)            # shape: (T, N)
+
+    # ############################# update pi ###################################
+    # \pi_k = \sum_{i=1}^{T} gamma(z_1k^{i})
+    #       / \sum_{i=1}^{T} \sum_{j=1}^{K} gamma(z_1j^{i})
+    pi = np.sum(gamma[:, 0, :], axis=0) / np.sum(gamma[:, 0, :])
+
+    # ############################# update A ####################################
+    # A_{jk} = \sum_{i=1}^{T} \sum_{n=2}^{N} xi(z_{n-1}j^{i}, z_nk^{i}) 
+    #        / \sum_{i=1}^{T} \sum_{l=1}^{K} \sum_{n=2}^{N} xi(z_{n-1}j^{i}, z_nl^{i})
+    for j in range(n_states):
+        A[j, :] = np.sum(xi[:, :, j, :], axis=(0, 1)) / np.sum(xi[:, :, j, :])
+
+    # ######################### update phi = {mu, sigma} ########################
+    # mu_k = \sum_{i=1}^{T} \sum_{n=1}^{N} gamma(z_nk^{i}) x_n^{i} 
+    #      / \sum_{i=1}^{T} \sum_{n=1}^{N} gamma(z_nk^{i})
+    # sigma_k = \sum_{i=1}^{T} \sum_{n=1}^{N} gamma(z_nk^{i}) (x_n^{i} - mu_k)^2
+    #         / \sum_{i=1}^{T} \sum_{n=1}^{N} gamma(z_nk^{i})
+    for k in range(n_states):
+        phi['mu'][k] = np.sum(gamma[:, :, k] * x) / np.sum(gamma[:, :, k])
+        phi['sigma'][k] = \
+            np.sqrt(np.sum(gamma[:, :, k] * (x - phi['mu'][k])**2) / np.sum(gamma[:, :, k]))
 
     return pi, A, phi
 
@@ -218,7 +272,20 @@ def fit_hmm(x_list, n_states):
     pi, A, phi = initialize(n_states, x_list)
 
     """ YOUR CODE HERE
-     Populate the values of pi, A, phi with the correct values. 
+    Populate the values of pi, A, phi with the correct values. 
     """
-
+    threshold = 1e-4
+    max_iter = 1000
+    iter = 0
+    while iter < max_iter:
+        gamma_list, xi_list = e_step(x_list, pi, A, phi)
+        pi_new, A_new, phi_new = m_step(x_list, gamma_list, xi_list)
+        if (np.abs(pi_new - pi) < threshold).all() \
+        and (np.abs(A_new - A) < threshold).all() \
+        and (np.abs(phi_new['mu'] - phi['mu']) < threshold).all() \
+        and (np.abs(phi_new['sigma'] - phi['sigma']) < threshold).all() :
+            break # convergence
+        pi, A, phi = pi_new, A_new, phi_new
+        iter += 1
+    assert iter < max_iter, 'Not converged after {} iterations'.format(max_iter)
     return pi, A, phi

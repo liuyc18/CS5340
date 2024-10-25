@@ -5,9 +5,12 @@ You do not need to submit this file.
 import numpy as np
 import os
 from lab3 import e_step, m_step, fit_hmm
+import time
 
 
-TEST_CASES = ['seq_short', 'seq_long']
+# TEST_CASES = ['seq_short', 'seq_long']
+# TEST_CASES = ['seq_long', 'seq_long2']
+TEST_CASES = ['seq_short2', 'seq_long2', 'seq_short', 'seq_long']
 
 
 def wrap_test(func):
@@ -76,7 +79,7 @@ def run_fit_hmm():
 
         print('Running on {}'.format(test_case))
         print('---------------------')
-
+        start_time = time.time()
         # Load data
         npzfile = np.load('data/{}.npz'.format(test_case))
         x = list(npzfile['x'])
@@ -98,7 +101,7 @@ def run_fit_hmm():
         print('Your pi:\n', pi)
         print('Your A:\n', A)
         print('Your phi:\n', phi)
-
+        print('Time running fit_hmm() on dataset %s : %.2fs'%(test_case, time.time() - start_time))
         # Save out predictions
         with open('pred/{}.npz'.format(test_case), 'wb') as fid:
             np.savez(fid, pi=pi, A=A,
@@ -110,5 +113,5 @@ def run_fit_hmm():
 if __name__ == '__main__':
     os.makedirs('pred', exist_ok=True)
     test_e_step()
-    # test_m_step()
-    # run_fit_hmm()
+    test_m_step()
+    run_fit_hmm()
