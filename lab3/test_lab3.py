@@ -8,9 +8,7 @@ from lab3 import e_step, m_step, fit_hmm
 import time
 
 
-# TEST_CASES = ['seq_short', 'seq_long']
-# TEST_CASES = ['seq_long', 'seq_long2']
-TEST_CASES = ['seq_short2', 'seq_long2', 'seq_short', 'seq_long']
+TEST_CASES = ['seq_short', 'seq_long', 'seq_short2', 'seq_long2']
 
 
 def wrap_test(func):

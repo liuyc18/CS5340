@@ -179,6 +179,7 @@ def e_step(x_list, pi, A, phi):
             #         # emission = p(x_n^(i) | z_nk^(i) = 1)
             #         xi_list[i][n-1, j, k] = \
             #             alpha_hat[i, n-1, j] * beta_hat[i, n, k] * emission[i, n, k] * A[j, k] / c[i, n]
+            
             # use vectorization below to speed up (substitute the above loop)
             xi_list[i][n-1, :, :] = (
                 np.multiply(alpha_hat[i, n-1, :, np.newaxis], beta_hat[i, n, np.newaxis, :]) 
