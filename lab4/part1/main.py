@@ -1,9 +1,9 @@
 """ CS5340 Lab 4 Part 1: Importance Sampling
 See accompanying PDF for instructions.
 
-Name: <Your Name here>
-Email: <username>@u.nus.edu
-Student ID: A0123456X
+Name: Liu Yichao
+Email: yichao.liu@u.nus.edu
+Student ID: A0304386A
 """
 
 import os
@@ -44,6 +44,14 @@ def _sample_step(nodes, proposal_factors):
     samples = {}
 
     """ YOUR CODE HERE: Use np.random.choice """
+    evidence = {}
+    for node in nodes:
+        # in topo order, all parents have been sampled (as evidence) before this node 
+        factor = factor_evidence(proposal_factors[node], evidence)
+        # only 1 var remains in factor after factor_evidence in topo order
+        node_sample = np.random.choice(factor.card[0], size=1, p=factor.val/np.sum(factor.val))[0] 
+        samples[node] = node_sample
+        evidence[node] = node_sample
     """ END YOUR CODE HERE """
 
     assert len(samples.keys()) == len(nodes)
@@ -71,7 +79,82 @@ def _get_conditional_probability(target_factors, proposal_factors, evidence, num
     out = Factor()
 
     """ YOUR CODE HERE """
+    graph = nx.DiGraph()
+    # init graph structure with evidence
+    for node, factor in target_factors.items(): 
+        graph.add_node(node)
+        if node not in evidence:
+            for var in factor.var:
+                if var != node:
+                    graph.add_edge(var, node)
 
+    # import matplotlib.pyplot as plt
+    # nx.draw(graph, with_labels=True)
+    # plt.show()
+    # assert False, "stop here"
+
+    # update proposal factors with evidence
+    proposal_factors = {
+        node: factor_evidence(factor, evidence) \
+        for node, factor in proposal_factors.items() \
+        if node not in evidence # we don't need q(x_u) where x_u is evidence
+    }
+
+    # get topological order of nodes. O(n + m)
+    topo_nodes = np.array(list(nx.topological_sort(graph))) 
+    nodes = np.array(list(target_factors.keys()))
+    query_nodes = np.array([node for node in topo_nodes if node not in evidence])
+
+    # merge basic configs of target factors to 
+    # get basic config (var, card, val.shape) of `out` joint distribution factor
+    # and sort as numerical ascending order
+    # O(n^2logn), n is the number of nodes in the graph
+    for factor in target_factors.values():
+        for node in factor.var:
+            if node not in evidence and node not in out.var:
+                idx = np.searchsorted(out.var, node)
+                out.var = np.insert(out.var, idx, node)
+                out.card = np.insert(out.card, idx, factor.card[np.where(factor.var == node)[0][0]])
+    out.val = np.zeros(np.prod(out.card))
+
+    # sample num_iterations times
+    samples = []
+    for _ in tqdm(range(num_iterations)):
+        samples.append(_sample_step(query_nodes, proposal_factors))
+
+    # estimate distribution with importance sampling
+    # we have samples x^(1), x^(2), ..., x^(L)
+    # p_tilde(x^(l)) = \prod p_u(x_u^(l) | x_pi(u)^(l))
+    # q(x^(l)) = \prod q_u(x_u^(l) | x_pi(u)^(l))
+    # r_tilde_l = p_tilde(x^(l)) / q(x^(l))
+    # w_l = r_tilde_l / sum(r_tilde)
+    # p(x_F | x_E) = \sum w_l * I(x_F^(l) = x_F) / sum(w_l)
+
+    def cal_joint_prob(samples_with_evi, factors):
+        ans = np.ones(len(samples_with_evi))
+        for factor in factors.values():
+            assignments = np.array(
+                [[sample[node] for node in factor.var] for sample in samples_with_evi]
+            ).reshape(num_iterations, -1)
+            indices = np.array(
+                [assignment_to_index(assignment, factor.card) for assignment in assignments]
+            )
+            ans *= factor.val[indices]
+            # assignments.shape = (L, |var|), indices.shape = ans.shape = (L,)
+        return ans
+    
+    samples_with_evi = [{**evidence, **sample} for sample in samples]
+    p_tilde = cal_joint_prob(samples_with_evi, target_factors)
+    q = cal_joint_prob(samples_with_evi, proposal_factors)
+    r_tilde = p_tilde / q
+    weights = r_tilde / np.sum(r_tilde)
+
+    for sample, weight in zip(samples, weights):
+        assignment = np.array([sample[node] for node in out.var]).squeeze()
+        idx = assignment_to_index(assignment, out.card)
+        out.val[idx] += weight
+    # normalize
+    out.val /= np.sum(out.val)
     """ END YOUR CODE HERE """
 
     return out
