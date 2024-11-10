@@ -130,7 +130,7 @@ def _get_conditional_probability(target_factors, proposal_factors, evidence, num
     # w_l = r_tilde_l / sum(r_tilde)
     # p(x_F | x_E) = \sum w_l * I(x_F^(l) = x_F) / sum(w_l)
 
-    def cal_joint_prob(samples_with_evi, factors):
+    def cal_joint_prob_of_samples(samples_with_evi, factors):
         ans = np.ones(len(samples_with_evi))
         for factor in factors.values():
             assignments = np.array(
@@ -144,8 +144,8 @@ def _get_conditional_probability(target_factors, proposal_factors, evidence, num
         return ans
     
     samples_with_evi = [{**evidence, **sample} for sample in samples]
-    p_tilde = cal_joint_prob(samples_with_evi, target_factors)
-    q = cal_joint_prob(samples_with_evi, proposal_factors)
+    p_tilde = cal_joint_prob_of_samples(samples_with_evi, target_factors)
+    q = cal_joint_prob_of_samples(samples_with_evi, proposal_factors)
     r_tilde = p_tilde / q
     weights = r_tilde / np.sum(r_tilde)
 
@@ -210,11 +210,14 @@ def main():
     input_file = os.path.join(INPUT_DIR, '{}.json'.format(case))
     target_factors, proposal_factors, evidence, num_iterations = load_input_file(input_file=input_file)
 
+    from time import time
+    start = time()
     # solution part
     conditional_probability = _get_conditional_probability(target_factors=target_factors,
                                                            proposal_factors=proposal_factors,
                                                            evidence=evidence, num_iterations=num_iterations)
     print(conditional_probability)
+    print('Time: %.2fs'%(time() - start))
     # end solution part
 
     # json only recognises floats, not np.float, so we need to cast the values into floats.

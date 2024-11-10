@@ -71,7 +71,7 @@ def e_step(x_list, pi, A, phi):
     N = len(x_list[0]) # seq length
     T = len(x_list) # number of sequences
 
-    # ########################## old parameters ###################################
+    # ########################## old parametrics ###################################
     # p(x_n|z_nk = 1) ~ N(mu[k], sigma[k])
     mu, sigma = phi['mu'], phi['sigma'] 
 

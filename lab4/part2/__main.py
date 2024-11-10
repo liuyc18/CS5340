@@ -1,9 +1,9 @@
 """ CS5340 Lab 4 Part 2: Gibbs Sampling
 See accompanying PDF for instructions.
 
-Name: Liu Yichao
-Email: yichao.liu@u.nus.edu
-Student ID: A0304386A
+Name: <Lu, Yiwen>
+Email: <e0576207>@u.nus.edu
+Student ID: A0220573A
 """
 
 
@@ -26,28 +26,6 @@ GROUND_TRUTH_DIR = os.path.join(DATA_DIR, 'ground-truth')
 
 """ HELPER FUNCTIONS HERE """
 
-def _get_markov_blanket(node, edges):
-    """
-    Returns the Markov blanket of a node in a DAG represented by edges, 
-    including the node itself.
-
-    Args:
-        node: node of interest
-        edges: numpy array of unduplicated edges, e.g. [i, j] implies that 
-            node `i` is the parent of node `j`.
-
-    Returns:
-        numpy array of nodes in the Markov blanket of the node
-    """
-    markov_blanket = np.array([node], dtype=np.int64)
-    parents = edges[np.where(edges[:, 1] == node)][:, 0]
-    children = edges[np.where(edges[:, 0] == node)][:, 1]
-    for child in children:
-        siblings = edges[np.where(edges[:, 1] == child)][:, 0]
-        markov_blanket = np.concatenate([markov_blanket, siblings])
-    markov_blanket = np.concatenate([parents, children, markov_blanket])
-    markov_blanket = np.unique(markov_blanket).astype(np.int64)
-    return markov_blanket
 
 """ END HELPER FUNCTIONS HERE"""
 
@@ -67,14 +45,18 @@ def _sample_step(nodes, factors, in_samples):
     samples = copy.deepcopy(in_samples)
 
     """ YOUR CODE HERE """
-    for node in nodes:
-        samples.pop(node)
-        factor = factor_evidence(factors[node], samples)
-        node_sample = np.random.choice(
-            factor.card[0], size=1, p=factor.val/np.sum(factor.val)
-        )[0]
-        samples[node] = node_sample
+    for node_index in range(len(nodes)):
+        factor = factors[nodes[node_index]]
+        node_card = factor.card[node_index]
+        p = np.zeros(node_card)
+        for card in range(node_card):
+            samples[nodes[node_index]] = card
+            index = assignment_to_index(list(samples.values()), factor.card)
+            p[card] = factor.val[index]
 
+        p = p/np.sum(p)
+        var = np.random.choice(a=np.arange(node_card), p=p)
+        samples[nodes[node_index]] = var
     """ END YOUR CODE HERE """
 
     return samples
@@ -101,54 +83,34 @@ def _get_conditional_probability(nodes, edges, factors, evidence, initial_sample
     conditional_prob = Factor()
 
     """ YOUR CODE HERE """
-    # update factors with evidence 
-    factors = {
-        node: factor_evidence(factor, evidence)
-        for node, factor in factors.items()
-    }
-    ne_nodes = np.array([node for node in nodes if node not in evidence])
-    card = factors[nodes[0]].card
+    for factor_index in factors:
+        factors[factor_index] = factor_evidence(factors[factor_index],evidence)
+    remove_nodes = list(evidence.keys())
+    for node in remove_nodes:
+        initial_samples.pop(node)
+        index = np.argwhere(nodes == node)
+        nodes = np.delete(nodes,index)
 
-    # reduce factors within markov blanket
-    for node in ne_nodes:
-        mb_nodes = _get_markov_blanket(node, edges)
-        not_mb_nodes = np.array([node for node in ne_nodes if node not in mb_nodes])
-        factors[node] = factor_marginalize(factors[node], not_mb_nodes)
+    total_run = num_burn_in + num_iterations
+    sample_result = np.zeros([total_run, len(nodes)])
+    for i in tqdm(range(total_run)):
+        initial_samples = _sample_step(nodes, factors, initial_samples)
+        sample_result[i] = np.array(list(initial_samples.values()))
 
-    # remove evidence nodes from initial samples
-    initial_samples = {
-        node: initial_samples[node]
-        for node in ne_nodes
-    }
+    # set freq dict
+    freq = {}
+    for i in range(len(factors[0].val)):
+        freq[i] = 0
+    card = factors[0].card
+    for i in range(num_burn_in,num_iterations):
+        index = assignment_to_index(sample_result[i],card)
+        freq[index] += 1
 
-    # print(ne_nodes)
-    # for factor in factors.values():
-    #     print(factor)
-    # assert False
-
-    # burn-in step
-    for i in range(num_burn_in):
-        initial_samples = _sample_step(ne_nodes, factors, initial_samples)
-    
-    # Gibbs sampling
-    input_samples = initial_samples
-    samples = np.array([]) # store samples as assignment_to_index array w.r.t. `nodes`
-    # all factors have the same cardinality w.r.t. the ascending order of `ne_nodes`
-    for i in tqdm(range(num_iterations)):
-        input_samples = _sample_step(ne_nodes, factors, input_samples)
-        # change `input_samples` from dictionary {node:sample} to array
-        # [sample1, sample2, ...] w.r.t. the order of `ne_nodes`
-        assignment = np.array([input_samples[node] for node in ne_nodes])
-        samples = np.append(samples, assignment_to_index(assignment, card))
-    
-    # calculate frequency of each sample
-    counter = Counter(samples)
-    freq = np.array([counter[i] for i in range(np.prod(card))])
-    freq = freq / np.sum(freq)
-    conditional_prob.var = ne_nodes
+    freq_arr = np.array(list(freq.values()))
+    freq_arr = freq_arr/np.sum(freq_arr)
+    conditional_prob.var = factors[0].var
     conditional_prob.card = card
-    conditional_prob.val = freq
-
+    conditional_prob.val = freq_arr
     """ END YOUR CODE HERE """
 
     return conditional_prob
@@ -206,14 +168,14 @@ def main():
     nodes, edges, node_factors, evidence, initial_samples, num_iterations, num_burn_in = \
         load_input_file(input_file=input_file)
 
-    # solution part
     from time import time
     start = time()
+    # solution part
     conditional_probability = _get_conditional_probability(nodes=nodes, edges=edges, factors=node_factors,
                                                            evidence=evidence, initial_samples=initial_samples,
                                                            num_iterations=num_iterations, num_burn_in=num_burn_in)
     print(conditional_probability)
-    print('Time: %.2fs'%(time() - start))
+    print('Time taken: {:.2f}s'.format(time() - start))
     # end solution part
 
     # json only recognises floats, not np.float, so we need to cast the values into floats.
